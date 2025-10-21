@@ -2,8 +2,8 @@ package io.github.ethersync
 
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.ColoredProcessHandler
+import com.intellij.execution.process.ProcessAdapter
 import com.intellij.execution.process.ProcessEvent
-import com.intellij.execution.process.ProcessListener
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.logger
@@ -16,7 +16,6 @@ import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.ProjectManagerListener
-import com.intellij.openapi.util.Key
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.util.io.await
@@ -29,6 +28,7 @@ import io.github.ethersync.sync.Cursortracker
 import io.github.ethersync.ui.ToolWindow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.eclipse.lsp4j.jsonrpc.Launcher
@@ -130,20 +130,13 @@ class EthersyncServiceImpl(
    }
 
    override fun start(peer: String?) {
-      val socket = "ethersync-%s-socket".format(project.name)
-
       val cmd = GeneralCommandLine(AppSettings.getInstance().state.ethersyncBinaryPath)
-
-      cmd.addParameter("daemon")
-      peer?.let {
-         if (peer.isNotBlank()) {
-            cmd.addParameter("--peer")
-            cmd.addParameter(peer)
-         }
+      if (peer.isNullOrBlank()) {
+         cmd.addParameter("share")
+      } else {
+         cmd.addParameter("join")
+         cmd.addParameter(peer.trim())
       }
-      cmd.addParameter("--socket-name")
-      cmd.addParameter(socket)
-
       launchDaemon(cmd)
    }
 
@@ -159,18 +152,6 @@ class EthersyncServiceImpl(
       val ethersyncDirectory = File(projectDirectory, ".ethersync")
       cmd.workDirectory = projectDirectory
 
-      var socket: String? = null
-      if (cmd.parametersList.hasParameter("--socket-name") || cmd.parametersList.hasParameter("-s")) {
-         for (i in 0..(cmd.parametersList.parametersCount - 1)) {
-            val name = cmd.parametersList[i]
-
-            if (name == "--socket-name" || name == "-s") {
-               socket = cmd.parametersList[i + 1]
-               break
-            }
-         }
-      }
-
       cs.launch {
          shutdownImpl()
 
@@ -182,13 +163,7 @@ class EthersyncServiceImpl(
          withContext(Dispatchers.EDT) {
             daemonProcess = ColoredProcessHandler(cmd)
 
-            daemonProcess!!.addProcessListener(object : ProcessListener {
-               override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
-                  if (event.text.contains("Others can connect with")) {
-                     launchEthersyncClient(socket, projectDirectory)
-                  }
-               }
-
+            daemonProcess!!.addProcessListener(object : ProcessAdapter() {
                override fun processTerminated(event: ProcessEvent) {
                   shutdown()
                }
@@ -203,6 +178,9 @@ class EthersyncServiceImpl(
             tw.show()
 
             daemonProcess!!.startNotify()
+            cs.launch {
+               waitForSocketAndLaunchClient(projectDirectory)
+            }
          }
 
       }
@@ -221,27 +199,28 @@ class EthersyncServiceImpl(
 
       }
    }
+   private suspend fun waitForSocketAndLaunchClient(projectDirectory: File) {
+      val socketFile = File(projectDirectory, ".ethersync/socket")
+      while (clientProcess == null && daemonProcess != null) {
+         if (socketFile.exists()) {
+            launchEthersyncClient(projectDirectory)
+            return
+         }
+         delay(200)
+      }
+   }
 
-   private fun launchEthersyncClient(socket: String?, projectDirectory: File) {
+   private fun launchEthersyncClient(projectDirectory: File) {
       if (clientProcess != null) {
          return
       }
 
       cs.launch {
-         val cmd = GeneralCommandLine(AppSettings.getInstance().state.ethersyncBinaryPath)
-         cmd.workDirectory = projectDirectory
-         cmd.addParameter("client")
-
-         socket?.let {
-            cmd.addParameter("--socket-name")
-            cmd.addParameter(it)
-         }
-
          LOG.info("Starting ethersync client")
          // TODO: try catch not existing binary
          val clientProcessBuilder = ProcessBuilder(
             AppSettings.getInstance().state.ethersyncBinaryPath,
-            "client", "--socket-name", socket)
+            "client")
                .directory(projectDirectory)
          clientProcess = clientProcessBuilder.start()
          val clientProcess = clientProcess!!

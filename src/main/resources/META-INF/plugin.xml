@@ -39,7 +39,7 @@
          id="StartEthersyncDaemon"
          class="io.github.ethersync.StartEthersyncDaemonAction"
          text="Code with Ethersync"
-         description="Connect to a running ethersync daemon or start a new peer"
+         description="Connect to an existing ethersync session or start sharing this project"
          icon="/toolbar.svg">
          <add-to-group group-id="ToolsMenu" anchor="first"/>
       </action>

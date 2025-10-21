@@ -33,6 +33,6 @@ class StartEthersyncDaemonTerminalShellCommandHandler : TerminalShellCommandHand
 
         val rest = command.substring(ethersyncBinary.length).trim()
 
-        return rest.startsWith("daemon")
+        return rest.startsWith("share") || rest.startsWith("join")
     }
 }
