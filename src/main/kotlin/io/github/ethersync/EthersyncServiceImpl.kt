@@ -9,6 +9,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.*
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.fileEditor.TextEditor
@@ -57,7 +58,7 @@ class EthersyncServiceImpl(
       bus.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
          override fun fileOpened(source: FileEditorManager, file: VirtualFile) {
             val canonicalFile = file.canonicalFile ?: return
-            launchDocumentOpenRequest(canonicalFile.url)
+            launchDocumentOpenRequest(canonicalFile)
          }
 
          override fun fileClosed(source: FileEditorManager, file: VirtualFile) {
@@ -262,7 +263,8 @@ class EthersyncServiceImpl(
 
          val fileEditorManager = FileEditorManager.getInstance(project)
          for (file in fileEditorManager.openFiles) {
-            launchDocumentOpenRequest(file.canonicalFile!!.url)
+            val canonicalFile = file.canonicalFile ?: continue
+            launchDocumentOpenRequest(canonicalFile)
          }
 
          clientProcess.awaitExit()
@@ -290,12 +292,23 @@ class EthersyncServiceImpl(
       }
    }
 
-   fun launchDocumentOpenRequest(fileUri: String) {
+   fun launchDocumentOpenRequest(file: VirtualFile) {
       val launcher = launcher ?: return
+      val fileUri = file.url
       cs.launch {
          try {
+            val content = withContext(Dispatchers.EDT) {
+               val document = FileDocumentManager.getInstance().getDocument(file)
+               document?.text
+            }
+
+            if (content == null) {
+               LOG.warn("Unable to read content for $fileUri; skipping open request")
+               return@launch
+            }
+
             changetracker.openFile(fileUri)
-            launcher.remoteProxy.open(DocumentRequest(fileUri)).await()
+            launcher.remoteProxy.open(DocumentRequest(fileUri, content)).await()
          } catch (e: ResponseErrorException) {
             TODO("not yet implemented: notify about an protocol error")
          }

@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "io.github.ethersync"
-version = "0.7.0-SNAPSHOT"
+version = "0.8.0-SNAPSHOT"
 
 repositories {
    mavenCentral()

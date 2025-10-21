@@ -54,7 +54,7 @@ class Changetracker(
       val editor = fileEditor.editor
       val uri = file.canonicalFile!!.url
 
-      val rev = revisions[uri]!!
+      val rev = revisions[uri] ?: return
       rev.editor += 1u
 
       val start = editor.offsetToLogicalPosition(event.oldRange.startOffset)
