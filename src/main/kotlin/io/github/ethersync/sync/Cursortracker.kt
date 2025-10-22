@@ -25,8 +25,12 @@ import java.awt.Graphics
 import java.awt.Graphics2D
 import java.util.*
 import kotlin.collections.HashMap
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.editor.ScrollType
+import java.io.File
 
 class Cursortracker(
    private val project: Project,
@@ -98,7 +102,7 @@ class Cursortracker(
          return
       }
       withUiContext {
-         val vf = VirtualFileManager.getInstance().findFileByUrl(state.documentUri) ?: return@withUiContext
+         val vf = findOrRefreshVirtualFile(state.documentUri) ?: return@withUiContext
          val editors = FileEditorManager.getInstance(project).openFile(vf, true)
          val textEditor = editors.filterIsInstance<TextEditor>().firstOrNull() ?: return@withUiContext
          val editor = textEditor.editor
@@ -124,6 +128,21 @@ class Cursortracker(
       }
    }
 
+   private fun findOrRefreshVirtualFile(documentUri: String): VirtualFile? {
+      val manager = VirtualFileManager.getInstance()
+      manager.findFileByUrl(documentUri)?.let { return it }
+      manager.refreshAndFindFileByUrl(documentUri)?.let { return it }
+
+      if (documentUri.startsWith("file://")) {
+         val path = VfsUtilCore.urlToPath(documentUri)
+         if (path.isNotBlank()) {
+            LocalFileSystem.getInstance().refreshAndFindFileByIoFile(File(path))?.let { return it }
+         }
+      }
+
+      return null
+   }
+
    private fun rememberRemoteCursor(cursorEvent: CursorEvent): RemoteCursorState {
       val state = RemoteCursorState(cursorEvent.name, cursorEvent.documentUri, cursorEvent.ranges)
       synchronized(remoteCursors) {
@@ -139,7 +158,15 @@ class Cursortracker(
          .allEditors
          .filterIsInstance<TextEditor>()
          .filter { editor -> editor.file.canonicalFile != null }
-         .firstOrNull { editor -> editor.file.canonicalFile!!.url == cursorEvent.documentUri } ?: return
+         .firstOrNull { editor -> editor.file.canonicalFile!!.url == cursorEvent.documentUri }
+         ?: run {
+            if (followingUserId == cursorEvent.userId) {
+               cs.launch {
+                  jumpToRemoteCursor(cursorEvent.userId, state)
+               }
+            }
+            return
+         }
 
       val key = Key(cursorEvent.documentUri, cursorEvent.userId)
       val editor = fileEditor.editor
