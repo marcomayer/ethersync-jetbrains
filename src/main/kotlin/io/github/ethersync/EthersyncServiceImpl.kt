@@ -163,19 +163,24 @@ class EthersyncServiceImpl(
          "${info.displayName} — $location"
       }
 
-      val selectedIndex = if (optionStrings.size == 1) {
-         0
-      } else {
-         val choice = Messages.showChooseDialog(
-            project,
-            "Select the collaborator whose cursor you want to follow.",
-            "Follow Peer",
-            optionStrings.toTypedArray(),
-            optionStrings.first(),
-            null,
-         ) ?: return
-         optionStrings.indexOf(choice).takeIf { it >= 0 } ?: return
-      }
+      val optionArray = optionStrings.toTypedArray()
+      val selectedIndex =
+         if (optionArray.size == 1) {
+            0
+         } else {
+            val index = Messages.showChooseDialog(
+               project,
+               "Select the collaborator whose cursor you want to follow.",
+               "Follow Peer",
+               null,
+               optionArray,
+               optionArray.first(),
+            )
+            if (index < 0) {
+               return
+            }
+            index
+         }
 
       val selected = remoteCursors[selectedIndex]
       if (cursortracker.follow(selected.userId)) {

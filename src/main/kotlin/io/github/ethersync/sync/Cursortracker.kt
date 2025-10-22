@@ -58,7 +58,9 @@ class Cursortracker(
    }
 
    fun listRemoteCursors(): List<RemoteCursorInfo> {
-      val snapshot = synchronized(remoteCursors) { remoteCursors.toMap() }
+      val snapshot: List<Pair<String, RemoteCursorState>> = synchronized(remoteCursors) {
+         remoteCursors.entries.map { it.key to it.value }
+      }
       return snapshot
          .map { (userId, state) ->
             RemoteCursorInfo(
