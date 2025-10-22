@@ -7,4 +7,8 @@ interface EthersyncService {
    fun shutdown()
 
    fun startWithCustomCommandLine(commandLine: String)
+
+   fun followPeer()
+
+    fun stopFollowingPeer()
 }

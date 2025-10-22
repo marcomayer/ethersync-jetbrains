@@ -20,10 +20,13 @@ import kotlinx.coroutines.launch
 import org.eclipse.lsp4j.Position
 import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.jsonrpc.ResponseErrorException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.util.*
 import kotlin.collections.HashMap
+import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.editor.ScrollType
 
 class Cursortracker(
    private val project: Project,
@@ -32,10 +35,104 @@ class Cursortracker(
 
    private data class Key(val documentUri: String, val user: String)
    private val highlighter = HashMap<Key, List<RangeHighlighter>>()
+   data class RemoteCursorInfo(
+      val userId: String,
+      val displayName: String,
+      val documentUri: String,
+      val ranges: List<Range>,
+   )
+   private data class RemoteCursorState(
+      val name: String?,
+      val documentUri: String,
+      val ranges: List<Range>,
+   )
+   private val remoteCursors: MutableMap<String, RemoteCursorState> = HashMap()
+   @Volatile
+   private var followingUserId: String? = null
+   private val ignoreLocalCaretEvent = AtomicBoolean(false)
 
    var remoteProxy: RemoteEthersyncClientProtocol? = null
 
+   private fun displayNameFor(name: String?, userId: String): String {
+      return name?.takeIf { it.isNotBlank() } ?: userId
+   }
+
+   fun listRemoteCursors(): List<RemoteCursorInfo> {
+      val snapshot = synchronized(remoteCursors) { remoteCursors.toMap() }
+      return snapshot
+         .map { (userId, state) ->
+            RemoteCursorInfo(
+               userId,
+               displayNameFor(state.name, userId),
+               state.documentUri,
+               state.ranges,
+            )
+         }
+         .sortedBy { it.displayName.lowercase(Locale.getDefault()) }
+   }
+
+   fun unfollow() {
+      followingUserId = null
+   }
+
+   fun currentFollowedUser(): String? = followingUserId
+
+   fun displayNameForUser(userId: String): String? {
+      val state = synchronized(remoteCursors) { remoteCursors[userId] } ?: return null
+      return displayNameFor(state.name, userId)
+   }
+
+   fun follow(userId: String): Boolean {
+      val state = synchronized(remoteCursors) { remoteCursors[userId] } ?: return false
+      followingUserId = userId
+      cs.launch {
+         jumpToRemoteCursor(userId, state)
+      }
+      return true
+   }
+
+   private suspend fun jumpToRemoteCursor(userId: String, state: RemoteCursorState) {
+      if (state.ranges.isEmpty()) {
+         return
+      }
+      withUiContext {
+         val vf = VirtualFileManager.getInstance().findFileByUrl(state.documentUri) ?: return@withUiContext
+         val editors = FileEditorManager.getInstance(project).openFile(vf, true)
+         val textEditor = editors.filterIsInstance<TextEditor>().firstOrNull() ?: return@withUiContext
+         val editor = textEditor.editor
+         val range = state.ranges.last()
+         val logicalStart = LogicalPosition(range.start.line, range.start.character)
+         val logicalEnd = LogicalPosition(range.end.line, range.end.character)
+
+         ignoreLocalCaretEvent.set(true)
+         try {
+            val caret = editor.caretModel.primaryCaret
+            caret.moveToLogicalPosition(logicalStart)
+            if (range.start != range.end) {
+               val startOffset = editor.logicalPositionToOffset(logicalStart)
+               val endOffset = editor.logicalPositionToOffset(logicalEnd)
+               caret.setSelection(startOffset, endOffset)
+            } else {
+               caret.removeSelection()
+            }
+            editor.scrollingModel.scrollToCaret(ScrollType.CENTER)
+         } finally {
+           ignoreLocalCaretEvent.set(false)
+         }
+      }
+   }
+
+   private fun rememberRemoteCursor(cursorEvent: CursorEvent): RemoteCursorState {
+      val state = RemoteCursorState(cursorEvent.name, cursorEvent.documentUri, cursorEvent.ranges)
+      synchronized(remoteCursors) {
+         remoteCursors[cursorEvent.userId] = state
+      }
+      return state
+   }
+
    fun handleRemoteCursorEvent(cursorEvent: CursorEvent) {
+
+      val state = rememberRemoteCursor(cursorEvent)
       val fileEditor = FileEditorManager.getInstance(project)
          .allEditors
          .filterIsInstance<TextEditor>()
@@ -101,11 +198,18 @@ class Cursortracker(
                }
                highlighter[key] = newHighlighter
             }
+
+            if (followingUserId == cursorEvent.userId) {
+               jumpToRemoteCursor(cursorEvent.userId, state)
+            }
          }
       }
    }
 
    override fun caretPositionChanged(event: CaretEvent) {
+      if (ignoreLocalCaretEvent.get()) {
+         return
+      }
       val canonicalFile = event.editor.virtualFile?.canonicalFile ?: return
       val uri = canonicalFile.url
 
@@ -149,5 +253,9 @@ class Cursortracker(
             highlighter.clear()
          }
       }
+      synchronized(remoteCursors) {
+         remoteCursors.clear()
+      }
+      followingUserId = null
    }
 }

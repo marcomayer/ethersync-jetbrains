@@ -13,6 +13,12 @@ download] and this ZIP can be installed into the Jetbrains product from disk
 (see [install from disk] instructions for IntelliJ). Please note, that this
 version currently targets Ethersync 0.8.
 
+## Follow mode
+
+When the plugin is running you can follow another collaborator’s cursor directly
+from the ethersync tool window toolbar. Click *Follow peer* to pick a remote
+cursor, and use *Stop following* to return to your own caret.
+
 # Development
 
 The development instructions can be found [here](DEVELOPMENT.md).

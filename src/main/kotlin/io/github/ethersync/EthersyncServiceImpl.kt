@@ -16,7 +16,9 @@ import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.ProjectManagerListener
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.util.io.await
 import com.intellij.util.io.awaitExit
@@ -31,11 +33,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.jsonrpc.Launcher
 import org.eclipse.lsp4j.jsonrpc.ResponseErrorException
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
+import java.nio.file.Paths
 import java.util.concurrent.Executors
 
 private val LOG = logger<EthersyncServiceImpl>()
@@ -145,6 +149,52 @@ class EthersyncServiceImpl(
       val cmd = GeneralCommandLine(commandLine.split(" "))
 
       launchDaemon(cmd)
+   }
+
+   override fun followPeer() {
+      val remoteCursors = cursortracker.listRemoteCursors()
+      if (remoteCursors.isEmpty()) {
+         Messages.showInfoMessage(project, "No remote cursors available to follow.", "Ethersync")
+         return
+      }
+
+      val optionStrings = remoteCursors.map { info ->
+         val location = formatLocation(info.documentUri, info.ranges)
+         "${info.displayName} — $location"
+      }
+
+      val selectedIndex = if (optionStrings.size == 1) {
+         0
+      } else {
+         val choice = Messages.showChooseDialog(
+            project,
+            "Select the collaborator whose cursor you want to follow.",
+            "Follow Peer",
+            optionStrings.toTypedArray(),
+            optionStrings.first(),
+            null,
+         ) ?: return
+         optionStrings.indexOf(choice).takeIf { it >= 0 } ?: return
+      }
+
+      val selected = remoteCursors[selectedIndex]
+      if (cursortracker.follow(selected.userId)) {
+         Messages.showInfoMessage(project, "Following ${selected.displayName}.", "Ethersync")
+      } else {
+         Messages.showWarningDialog(project, "The selected cursor is no longer available.", "Ethersync")
+      }
+   }
+
+   override fun stopFollowingPeer() {
+      val current = cursortracker.currentFollowedUser()
+      if (current == null) {
+         Messages.showInfoMessage(project, "You are not following any collaborator.", "Ethersync")
+         return
+      }
+
+      cursortracker.unfollow()
+      val displayName = cursortracker.displayNameForUser(current) ?: "collaborator"
+      Messages.showInfoMessage(project, "Stopped following $displayName.", "Ethersync")
    }
 
    private fun launchDaemon(cmd: GeneralCommandLine) {
@@ -292,6 +342,24 @@ class EthersyncServiceImpl(
             TODO("not yet implemented: notify about an protocol error")
          }
       }
+   }
+
+   private fun formatLocation(documentUri: String, ranges: List<Range>): String {
+      val range = ranges.lastOrNull()
+      val line = range?.start?.line?.plus(1) ?: "?"
+
+      val path = runCatching { VfsUtilCore.urlToPath(documentUri) }.getOrNull()
+      val presentablePath = path ?: documentUri
+      val relative = project.basePath?.let { base ->
+         runCatching {
+            val basePath = Paths.get(base)
+            val filePath = Paths.get(presentablePath)
+            basePath.relativize(filePath).toString()
+         }.getOrNull()
+      }
+
+      val displayPath = (relative ?: presentablePath).ifEmpty { presentablePath }
+      return "$displayPath:$line"
    }
 
 }
