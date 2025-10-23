@@ -102,6 +102,7 @@ class Changetracker(
 
                editor.document.replaceString(start, end, delta.replacement)
             }
+            FileDocumentManager.getInstance().saveDocument(editor.document)
             ignoreChangeEvent.set(false)
          })
 
@@ -132,5 +133,14 @@ class Changetracker(
             TODO("not yet implemented: notify about an protocol error")
          }
       }
+   }
+
+   override fun documentChanged(event: DocumentEvent) {
+      if (ignoreChangeEvent.get()) {
+         return
+      }
+
+      val document = event.document
+      FileDocumentManager.getInstance().saveDocument(document)
    }
 }
