@@ -7,6 +7,8 @@ import com.intellij.openapi.editor.colors.EditorFontType
 import com.intellij.openapi.editor.event.CaretEvent
 import com.intellij.openapi.editor.event.CaretListener
 import com.intellij.openapi.editor.markup.*
+import com.intellij.openapi.editor.event.SelectionEvent
+import com.intellij.openapi.editor.event.SelectionListener
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
@@ -36,7 +38,7 @@ import java.io.File
 class Cursortracker(
    private val project: Project,
    private val cs: CoroutineScope,
-) : CaretListener {
+) : CaretListener, SelectionListener {
 
    companion object {
       private val LOG = logger<Cursortracker>()
@@ -253,14 +255,41 @@ class Cursortracker(
       followingUserId?.let {
          stopFollowing("local caret move")
       }
-      val canonicalFile = event.editor.virtualFile?.canonicalFile ?: return
+      sendCursorUpdate(event.editor)
+   }
+
+   override fun selectionChanged(e: SelectionEvent) {
+      if (ignoreLocalCaretEvent.get()) {
+         return
+      }
+
+      followingUserId?.let {
+         stopFollowing("local selection change")
+      }
+      sendCursorUpdate(e.editor)
+   }
+
+   private fun sendCursorUpdate(editor: Editor) {
+      val canonicalFile = editor.virtualFile?.canonicalFile ?: return
       val uri = canonicalFile.url
 
-      val ranges = event.editor.caretModel
+      val ranges = editor.caretModel
          .allCarets
-         .map {caret ->
-            val pos = Position(caret.logicalPosition.line, caret.logicalPosition.column)
-            Range(pos, pos)
+         .map { caret ->
+            val selectionStart = caret.selectionStartPosition
+            val selectionEnd = caret.selectionEndPosition
+            if (caret.hasSelection() && selectionStart != null && selectionEnd != null) {
+               Range(
+                  Position(selectionStart.line, selectionStart.column),
+                  Position(selectionEnd.line, selectionEnd.column),
+               )
+            } else {
+               val pos = caret.logicalPosition
+               Range(
+                  Position(pos.line, pos.column),
+                  Position(pos.line, pos.column),
+               )
+            }
          }
 
       launchCursorRequest(CursorRequest(uri, ranges))

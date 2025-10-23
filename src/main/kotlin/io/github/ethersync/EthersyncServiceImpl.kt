@@ -79,6 +79,7 @@ class EthersyncServiceImpl(
             }
             editor.editor.caretModel.addCaretListener(cursortracker)
             editor.editor.document.addDocumentListener(changetracker)
+            editor.editor.selectionModel.addSelectionListener(cursortracker)
          }
       }
 
@@ -91,6 +92,7 @@ class EthersyncServiceImpl(
 
             event.editor.caretModel.addCaretListener(cursortracker)
             event.editor.document.addDocumentListener(changetracker)
+            event.editor.selectionModel.addSelectionListener(cursortracker)
          }
 
          override fun editorReleased(event: EditorFactoryEvent) {
@@ -101,6 +103,7 @@ class EthersyncServiceImpl(
 
             event.editor.caretModel.removeCaretListener(cursortracker)
             event.editor.document.removeDocumentListener(changetracker)
+            event.editor.selectionModel.removeSelectionListener(cursortracker)
          }
       }, project)
 
