@@ -1,5 +1,6 @@
 package io.github.ethersync.sync
 
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.LogicalPosition
 import com.intellij.openapi.editor.colors.EditorFontType
@@ -36,6 +37,10 @@ class Cursortracker(
    private val project: Project,
    private val cs: CoroutineScope,
 ) : CaretListener {
+
+   companion object {
+      private val LOG = logger<Cursortracker>()
+   }
 
    private data class Key(val documentUri: String, val user: String)
    private val highlighter = HashMap<Key, List<RangeHighlighter>>()
@@ -95,6 +100,11 @@ class Cursortracker(
          jumpToRemoteCursor(userId, state)
       }
       return true
+   }
+
+   fun stopFollowing(reason: String) {
+      followingUserId = null
+      LOG.debug("Stopped following: $reason")
    }
 
    private suspend fun jumpToRemoteCursor(userId: String, state: RemoteCursorState) {
@@ -238,6 +248,10 @@ class Cursortracker(
    override fun caretPositionChanged(event: CaretEvent) {
       if (ignoreLocalCaretEvent.get()) {
          return
+      }
+
+      followingUserId?.let {
+         stopFollowing("local caret move")
       }
       val canonicalFile = event.editor.virtualFile?.canonicalFile ?: return
       val uri = canonicalFile.url

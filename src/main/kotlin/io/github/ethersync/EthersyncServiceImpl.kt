@@ -54,8 +54,8 @@ class EthersyncServiceImpl(
    private var daemonProcess: ColoredProcessHandler? = null
    private var clientProcess: Process? = null
 
-   private val changetracker: Changetracker = Changetracker(project, cs)
    private val cursortracker: Cursortracker = Cursortracker(project, cs)
+   private val changetracker: Changetracker = Changetracker(project, cs, cursortracker)
 
    init {
       val bus = project.messageBus.connect()

@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class Changetracker(
    private val project: Project,
    private val cs: CoroutineScope,
+   private val cursortracker: Cursortracker,
 ) : DocumentListener {
 
    // TODO: remove because that seems brittle…
@@ -44,6 +45,8 @@ class Changetracker(
       if (ignoreChangeEvent.get()) {
          return
       }
+
+      cursortracker.stopFollowing("local edit")
 
       val file = FileDocumentManager.getInstance().getFile(event.document)!!
       val fileEditor = FileEditorManager.getInstance(project).getEditors(file)
