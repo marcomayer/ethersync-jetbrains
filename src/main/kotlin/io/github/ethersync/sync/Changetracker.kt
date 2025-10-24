@@ -9,7 +9,6 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.refactoring.suggested.oldRange
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.util.io.await
@@ -110,7 +109,6 @@ class Changetracker(
             }
             ignoreChangeEvent.set(false)
             PsiDocumentManager.getInstance(project).commitDocument(editor.document)
-            FileDocumentManager.getInstance().saveDocument(editor.document)
          })
 
          revision.daemon += 1u
@@ -142,28 +140,5 @@ class Changetracker(
       }
    }
 
-   fun reloadFromDisk(file: VirtualFile) {
-      val document = FileDocumentManager.getInstance().getDocument(file) ?: return
-      ignoreChangeEvent.set(true)
-      try {
-         ApplicationManager.getApplication().runWriteAction {
-            FileDocumentManager.getInstance().reloadFromDisk(document)
-            PsiDocumentManager.getInstance(project).commitDocument(document)
-         }
-      } finally {
-         ignoreChangeEvent.set(false)
-      }
-   }
-
    fun isTracking(uri: String): Boolean = revisions.containsKey(uri)
-
-   override fun documentChanged(event: DocumentEvent) {
-      if (ignoreChangeEvent.get()) {
-         return
-      }
-
-      val document = event.document
-      PsiDocumentManager.getInstance(project).commitDocument(document)
-      FileDocumentManager.getInstance().saveDocument(document)
-   }
 }

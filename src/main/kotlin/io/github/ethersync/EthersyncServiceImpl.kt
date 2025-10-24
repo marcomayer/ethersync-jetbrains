@@ -78,12 +78,16 @@ class EthersyncServiceImpl(
          override fun after(events: MutableList<out VFileEvent>) {
             for (event in events) {
                val file = event.file ?: continue
-               val canonical = file.canonicalFile ?: continue
-               val uri = canonical.url
-               if (changetracker.isTracking(uri)) {
-                  cs.launch {
-                     withContext(Dispatchers.EDT) {
-                        changetracker.reloadFromDisk(canonical)
+              val canonical = file.canonicalFile ?: continue
+              val uri = canonical.url
+              if (changetracker.isTracking(uri)) {
+                  FileDocumentManager.getInstance().getDocument(canonical)?.let { document ->
+                     cs.launch {
+                        withContext(Dispatchers.EDT) {
+                           changetracker.handleRemoteEditEvent(
+                              EditEvent(uri, 0u, emptyList())
+                           )
+                        }
                      }
                   }
                }
