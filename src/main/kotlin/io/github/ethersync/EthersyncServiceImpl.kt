@@ -19,6 +19,9 @@ import com.intellij.openapi.project.ProjectManagerListener
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VfsUtilCore
+import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.vfs.newvfs.BulkFileListener
+import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.util.io.await
 import com.intellij.util.io.awaitExit
@@ -68,6 +71,23 @@ class EthersyncServiceImpl(
          override fun fileClosed(source: FileEditorManager, file: VirtualFile) {
             val canonicalFile = file.canonicalFile ?: return
             launchDocumentCloseNotification(canonicalFile.url)
+         }
+      })
+
+      bus.subscribe(VirtualFileManager.VFS_CHANGES, object : BulkFileListener {
+         override fun after(events: MutableList<out VFileEvent>) {
+            for (event in events) {
+               val file = event.file ?: continue
+               val canonical = file.canonicalFile ?: continue
+               val uri = canonical.url
+               if (changetracker.isTracking(uri)) {
+                  cs.launch {
+                     withContext(Dispatchers.EDT) {
+                        changetracker.reloadFromDisk(canonical)
+                     }
+                  }
+               }
+            }
          }
       })
 
