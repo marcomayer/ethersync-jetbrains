@@ -1,6 +1,5 @@
 package io.github.ethersync.sync
 
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.LogicalPosition
 import com.intellij.openapi.editor.event.DocumentEvent
@@ -140,5 +139,4 @@ class Changetracker(
       }
    }
 
-   fun isTracking(uri: String): Boolean = revisions.containsKey(uri)
 }
