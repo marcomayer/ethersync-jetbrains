@@ -253,9 +253,6 @@ class Cursortracker(
          return
       }
 
-      followingUserId?.let {
-         stopFollowing("local caret move")
-      }
       sendCursorUpdate(event.editor)
    }
 

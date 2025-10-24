@@ -47,8 +47,6 @@ class Changetracker(
          return
       }
 
-      cursortracker.stopFollowing("local edit")
-
       val file = FileDocumentManager.getInstance().getFile(event.document)!!
       val fileEditor = FileEditorManager.getInstance(project).getEditors(file)
          .filter{ editor -> editor.file.canonicalFile != null }
