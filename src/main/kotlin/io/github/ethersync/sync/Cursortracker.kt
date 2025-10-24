@@ -1,6 +1,7 @@
 package io.github.ethersync.sync
 
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.LogicalPosition
 import com.intellij.openapi.editor.colors.EditorFontType
@@ -273,26 +274,42 @@ class Cursortracker(
       val canonicalFile = editor.virtualFile?.canonicalFile ?: return
       val uri = canonicalFile.url
 
+      val document = editor.document
+
       val ranges = editor.caretModel
          .allCarets
          .map { caret ->
-            val selectionStart = caret.selectionStartPosition
-            val selectionEnd = caret.selectionEndPosition
-            if (caret.hasSelection() && selectionStart != null && selectionEnd != null) {
-               Range(
-                  Position(selectionStart.line, selectionStart.column),
-                  Position(selectionEnd.line, selectionEnd.column),
-               )
+            val (startOffset, endOffset) = if (caret.hasSelection()) {
+               val selStart = caret.selectionStart
+               val selEnd = caret.selectionEnd
+               if (selStart <= selEnd) selStart to selEnd else selEnd to selStart
             } else {
-               val pos = caret.logicalPosition
-               Range(
-                  Position(pos.line, pos.column),
-                  Position(pos.line, pos.column),
-               )
+               val offset = caret.offset
+               offset to offset
             }
+
+            val startPosition = offsetToPosition(document, startOffset)
+            val endPosition = offsetToPosition(document, endOffset)
+            Range(startPosition, endPosition)
          }
 
       launchCursorRequest(CursorRequest(uri, ranges))
+   }
+
+   private fun offsetToPosition(document: Document, offset: Int): Position {
+      if (document.textLength == 0) {
+          return Position(0, 0)
+      }
+
+      val boundedOffset = offset.coerceIn(0, document.textLength)
+      val normalizedForLookup = when {
+         boundedOffset >= document.textLength && document.textLength > 0 -> boundedOffset - 1
+         else -> boundedOffset
+      }
+      val line = document.getLineNumber(normalizedForLookup)
+      val lineStartOffset = document.getLineStartOffset(line)
+      val column = (boundedOffset - lineStartOffset).coerceAtLeast(0)
+      return Position(line, column)
    }
 
    private fun launchCursorRequest(cursorRequest: CursorRequest) {
